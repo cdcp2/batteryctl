@@ -13,7 +13,6 @@
 #define BATTERY_NAME_SIZE 256
 #define SYSFS_PATH_SIZE 512
 
-/* Encuentra una unica bateria leyendo el atributo "type" de cada dispositivo. */
 static enum IoResult find_battery(char *name, size_t size)
 {
     if (name == NULL || size == 0) {
@@ -87,7 +86,6 @@ static enum IoResult find_battery(char *name, size_t size)
     return ret;
 }
 
-/* Construye una ruta a un atributo de la bateria descubierta. */
 static enum IoResult make_battery_path(const char *battery,
                                        const char *attribute,
                                        char *path, size_t size)
@@ -316,7 +314,6 @@ int print_battery_health(void)
 
     const char *unit = "mWh";
     
-    /* Try energy attributes first (uWh). */
     enum IoResult full_result =
         read_battery_number(battery, "energy_full", &full);
 
@@ -326,7 +323,6 @@ int print_battery_health(void)
     if (full_result == IO_ERROR || design_result == IO_ERROR)
         return EXIT_FAILURE;
 
-    /* Fall back to charge attributes (uAh). */
     if (full_result != IO_OK || design_result != IO_OK) {
         full_result =
             read_battery_number(battery, "charge_full", &full);
@@ -351,8 +347,7 @@ int print_battery_health(void)
     }
 
     double health = (double)full / (double)design * 100.0;
-
-    /* Cycle count is optional. */
+ 
     enum IoResult cycle_result =
         read_battery_number(battery, "cycle_count", &cycles);
 

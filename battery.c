@@ -167,10 +167,65 @@ int print_battery_status(void)
     return print_sysfs_attribute("Current mode", SHIFT_MODE_PATH, "", 1);
 }
 
+static enum IoResult read_battery_number(
+    const char *battery,
+    const char *attribute,
+    unsigned long *value)
+{
+    if (value == NULL) {
+        fprintf(stderr, "Invalid output pointer\n");
+        return IO_ERROR;
+    }
+
+    char path[SYSFS_PATH_SIZE];
+    char buffer[256];
+
+    enum IoResult result = make_battery_path(
+        battery, attribute, path, sizeof(path)
+    );
+
+    if (result != IO_OK)
+        return result;
+
+    result = read_sysfs_value(path, buffer, sizeof(buffer));
+
+    if (result != IO_OK)
+        return result;
+
+    if (buffer[0] < '0' || buffer[0] > '9') {
+        fprintf(stderr, "Invalid numeric attribute: %s\n", attribute);
+        return IO_ERROR;
+    }
+
+    errno = 0;
+    char *endptr;
+
+    unsigned long parsed = strtoul(buffer, &endptr, 10);
+
+    if (errno == ERANGE || endptr == buffer) {
+        fprintf(stderr, "Invalid number in attribute %s\n", attribute);
+        return IO_ERROR;
+    }
+
+    if (*endptr == '\n')
+        endptr++;
+
+    if (*endptr != '\0') {
+        fprintf(stderr, "Unexpected characters in attribute %s\n", attribute);
+        return IO_ERROR;
+    }
+
+    *value = parsed;
+
+    return IO_OK;
+}
+
 int set_charge_limit(unsigned int percentage)
 {
-    if (percentage < 10 || percentage > 100) {
-        fprintf(stderr, "Invalid charge limit: %u\n", percentage);
+    if (percentage != 60 &&
+        percentage != 80 &&
+        percentage != 100) {
+        fprintf(stderr, "Unsupported charge limit: %u\n", percentage);
         return EXIT_FAILURE;
     }
 
@@ -195,32 +250,18 @@ int set_charge_limit(unsigned int percentage)
     if (write_sysfs_value(path, value) != IO_OK)
         return EXIT_FAILURE;
 
-    char actual_text[32];
-    if (read_sysfs_value(path, actual_text, sizeof(actual_text)) != IO_OK) {
+    unsigned long actual;
+
+    if (read_battery_number(battery,"charge_control_end_threshold",&actual) != IO_OK) {
         fprintf(stderr, "Failed to read back charge limit\n");
         return EXIT_FAILURE;
     }
 
-    /* strtoul acepta signos/espacios: para sysfs exigimos solo digitos. */
-    if (actual_text[0] == '\0' ||
-        strspn(actual_text, "0123456789") != strlen(actual_text)) {
-        fprintf(stderr, "Invalid charge limit returned by driver: %s\n", actual_text);
-        return EXIT_FAILURE;
-    }
-
-    errno = 0;
-    char *endptr;
-    unsigned long actual = strtoul(actual_text, &endptr, 10);
-    if (errno == ERANGE || endptr == actual_text || *endptr != '\0') {
-        fprintf(stderr, "Invalid charge limit returned by driver\n");
-        return EXIT_FAILURE;
-    }
-
     if (actual != percentage) {
-        fprintf(stderr, "Charge limit mismatch: expected %u, got %lu\n",
-                percentage, actual);
+        fprintf(stderr,"Charge limit mismatch: expected %u, got %lu\n",percentage, actual);
         return EXIT_FAILURE;
     }
+
     return EXIT_SUCCESS;
 }
 
@@ -253,5 +294,87 @@ int set_performance_mode(const char *mode)
                 mode, actual);
         return EXIT_FAILURE;
     }
+    return EXIT_SUCCESS;
+}
+
+int print_battery_health(void)
+{
+    char battery[BATTERY_NAME_SIZE];
+
+    enum IoResult result = find_battery(battery, sizeof(battery));
+
+    if (result != IO_OK) {
+        if (result == IO_UNAVAILABLE)
+            fprintf(stderr, "No battery found\n");
+
+        return EXIT_FAILURE;
+    }
+
+    unsigned long full = 0;
+    unsigned long design = 0;
+    unsigned long cycles = 0;
+
+    const char *unit = "mWh";
+    
+    /* Try energy attributes first (uWh). */
+    enum IoResult full_result =
+        read_battery_number(battery, "energy_full", &full);
+
+    enum IoResult design_result =
+        read_battery_number(battery, "energy_full_design", &design);
+
+    if (full_result == IO_ERROR || design_result == IO_ERROR)
+        return EXIT_FAILURE;
+
+    /* Fall back to charge attributes (uAh). */
+    if (full_result != IO_OK || design_result != IO_OK) {
+        full_result =
+            read_battery_number(battery, "charge_full", &full);
+
+        design_result =
+            read_battery_number(battery, "charge_full_design", &design);
+
+        unit = "mAh";
+
+        if (full_result == IO_ERROR || design_result == IO_ERROR)
+            return EXIT_FAILURE;
+    }
+
+    if (full_result != IO_OK || design_result != IO_OK) {
+        fprintf(stderr, "Battery capacity information unavailable\n");
+        return EXIT_FAILURE;
+    }
+
+    if (design == 0) {
+        fprintf(stderr, "Design capacity cannot be zero\n");
+        return EXIT_FAILURE;
+    }
+
+    double health = (double)full / (double)design * 100.0;
+
+    /* Cycle count is optional. */
+    enum IoResult cycle_result =
+        read_battery_number(battery, "cycle_count", &cycles);
+
+    if (cycle_result == IO_ERROR)
+        return EXIT_FAILURE;
+
+    print_section("Battery health");
+    
+    printf("  %-20s %s\n", "Device", battery);
+
+    printf("  %-20s %.0f %s\n",
+           "Design capacity", (double)design / 1000.0, unit);
+
+    printf("  %-20s %.0f %s\n",
+           "Current full", (double)full / 1000.0, unit);
+
+    printf("  %-20s %.1f%%\n", "Health", health);
+
+    if (cycle_result == IO_OK && cycles > 0)
+        printf("  %-20s %lu\n", "Cycle count", cycles);
+    else
+        printf("  %-20s Unavailable\n", "Cycle count");
+
     return EXIT_SUCCESS;
 }

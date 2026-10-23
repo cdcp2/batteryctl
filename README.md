@@ -1,114 +1,128 @@
 # batteryctl
 
-A small command-line tool written in C to inspect battery information and configure supported battery charge limits and MSI performance modes on Linux.
-
-`batteryctl` uses the Linux **sysfs** interface. It does not communicate with the embedded controller (EC) directly, and it does not install, load, or modify kernel drivers.
+`batteryctl` is a small command-line program for Linux. It reads battery data from sysfs.
+It can also set a charge limit or request an MSI performance mode when the driver supports the operation.
 
 > [!WARNING]
-> Charge-limit and performance-mode changes depend on your kernel driver and hardware. Unsupported EC firmware configurations can be unsafe. **Do not force a firmware configuration or enable a performance mode merely because this tool accepts the command.** Verify hardware and driver compatibility first.
+> This software is experimental. Check the driver and firmware support before you change a setting.
+> Do not force an unknown EC configuration. A wrong configuration can cause hardware problems.
+> A successful read-back does not confirm the physical behavior of the battery or cooling system.
 
-## Features
+## Functions
 
-- Automatically find a battery using `/sys/class/power_supply/*/type` rather than assuming `BAT0` or `BAT1`.
-- Display battery charge percentage, charging status, charge thresholds, and an MSI performance mode when available.
-- Estimate battery capacity health from `energy_full` / `energy_full_design`, falling back to `charge_full` / `charge_full_design`.
-- Display a battery cycle count if the driver provides one.
-- Set a charge-end threshold to **60%, 80%, or 100%**, with read-back verification.
-- Request an MSI performance mode: `eco`, `comfort`, or `turbo`, with read-back verification.
-- Report missing optional sysfs attributes as unavailable.
+- Find one battery through the `type` attribute in `/sys/class/power_supply/`.
+- Show the charge level and the charge state.
+- Show the start and end charge limits, if the driver provides them.
+- Show the battery's estimated capacity health.
+- Show the charge cycle count, if the driver provides it.
+- Request a charge end limit of 60%, 80%, or 100%.
+- Request an MSI performance mode: `eco`, `comfort`, or `turbo`.
+- Read a setting again after a write to check the reported value.
 
 ## Requirements
 
-- Linux with the `power_supply` sysfs interface mounted at `/sys/class/power_supply`.
-- A C11 compiler and GNU Make to build the program.
-- A driver exposing `charge_control_end_threshold` to change charging thresholds.
-- A compatible `msi-ec` driver exposing `/sys/devices/platform/msi-ec/shift_mode` to change MSI performance modes.
+To build the program, install a C11 compiler and GNU Make.
 
-Read-only commands may work without `msi-ec`. Features depend on what the particular driver exports. See the [msi-ec project](https://github.com/BeardOverflow/msi-ec) for its supported firmware, setup instructions, and warnings. Installing `batteryctl` does **not** install `msi-ec`.
+On Arch Linux, run:
 
-On Arch Linux, install the build tools if necessary:
-
-```bash
+```sh
 sudo pacman -S --needed base-devel
 ```
 
+Linux must provide the power supply sysfs interface.
+The status and health commands do not need the MSI EC driver.
+The limit command needs a driver that provides `charge_control_end_threshold`.
+The performance command needs a compatible `msi-ec` driver that provides `shift_mode`.
+
+See the [msi-ec project](https://github.com/BeardOverflow/msi-ec) for driver information.
+`batteryctl` does not install or load that driver.
+
 ## Build
 
-From the project directory:
+Open the project directory. Run:
 
-```bash
+```sh
 make
 ```
 
-The executable is created at:
+Make creates `build/bin/batteryctl`.
 
-```text
-build/bin/batteryctl
-```
+Check the program before you install it:
 
-Try the read-only commands before installation:
-
-```bash
+```sh
 ./build/bin/batteryctl status
 ./build/bin/batteryctl health
 ```
 
-Remove generated files:
+Remove all build files:
 
-```bash
+```sh
 make clean
 ```
 
-## Install and uninstall
+## Install
 
-```bash
+Install the executable:
+
+```sh
 sudo make install
 ```
 
-The default installation path is `/usr/local/bin/batteryctl`. Check it with:
+The default path is `/usr/local/bin/batteryctl`.
 
-```bash
+Check the installed command:
+
+```sh
 command -v batteryctl
 batteryctl status
 ```
 
-To remove the installed executable:
+Remove the executable:
 
-```bash
+```sh
 sudo make uninstall
 ```
 
-Installation does **not** enable a systemd service or apply a charge limit on startup. Commands run only when requested. Loading the required kernel driver at boot is a separate system configuration task.
+Installation does not add a service. It does not set a charge limit at startup.
+The user must run a command to change a setting.
 
 ## Commands
 
-| Command | Description | Typical permissions |
-| --- | --- | --- |
-| `batteryctl status` | Show charge percentage, status, available charge thresholds, and current MSI performance mode. | Regular user |
-| `batteryctl health` | Show design capacity, estimated current full capacity, capacity retention, and cycle count if available. | Regular user |
-| `batteryctl limit 60` | Request a 60% charge-end threshold. | Root / write access |
-| `batteryctl limit 80` | Request an 80% charge-end threshold. | Root / write access |
-| `batteryctl limit 100` | Request a 100% charge-end threshold. | Root / write access |
-| `batteryctl performance eco` | Request the MSI power-saving mode. | Root / write access |
-| `batteryctl performance comfort` | Request the MSI balanced mode. | Root / write access |
-| `batteryctl performance turbo` | Request the MSI high-performance mode. | Root / write access |
+| Command | Function |
+| --- | --- |
+| `batteryctl status` | Show battery data and available settings. |
+| `batteryctl health` | Show the estimated battery health and cycle count. |
+| `batteryctl limit 60` | Request a 60% charge end limit. |
+| `batteryctl limit 80` | Request an 80% charge end limit. |
+| `batteryctl limit 100` | Request a 100% charge end limit. |
+| `batteryctl performance eco` | Request the MSI eco mode. |
+| `batteryctl performance comfort` | Request the MSI comfort mode. |
+| `batteryctl performance turbo` | Request the MSI turbo mode. |
+
+Read-only commands usually work without root privileges.
+Write operations usually need root privileges.
 
 For example:
 
-```bash
+```sh
 batteryctl status
 batteryctl health
 sudo batteryctl limit 80
 sudo batteryctl performance comfort
 ```
 
-**Important:** `limit 100` requests an upper threshold of 100%; it is **not** guaranteed to restore the EC's original or unconfigured state. On some MSI configurations, the corresponding start threshold is 10 percentage points below the end threshold (for example, 70% / 80%). Do not assume this relationship applies to every driver.
+> [!CAUTION]
+> Before you run a write command, make sure that the driver supports your laptop and EC firmware.
+> Do not use `turbo` before you check the cooling behavior of your laptop.
+> `limit 100` requests a 100% end limit. It does not necessarily restore the original EC state.
 
-`performance` currently accepts a fixed set of mode names. Their availability and effects depend on the loaded driver and model; the tool does not yet discover all supported shift modes dynamically. In particular, `turbo` can affect power use and thermals.
+The program accepts only the three specified charge limits.
+It does not detect all limits that the hardware can use.
+The performance modes also depend on the installed driver and laptop model.
 
 ## Battery health
 
-Example output (illustrative):
+Example output:
 
 ```text
 Battery health
@@ -120,92 +134,120 @@ Battery health
   Cycle count          Unavailable
 ```
 
-The calculation is:
+The program uses the following calculation:
 
 ```text
 health (%) = current full capacity / design capacity * 100
 ```
 
-- When available, `energy_*` values are converted from **µWh** to **mWh**.
-- Otherwise, `charge_*` values are converted from **µAh** to **mAh**.
-- `cycle_count` is optional; `Unavailable` means the driver does not provide a usable value.
-- Health is an **estimate of retained capacity**, not a complete battery diagnostic.
+The program first tries `energy_full` and `energy_full_design`.
+It shows these values in mWh.
+If the energy data is not available, it tries `charge_full` and `charge_full_design`.
+It shows these values in mAh.
 
-## How it works
+The health value is an estimate of the remaining capacity.
+It is not a complete battery health test.
+The cycle count can be unavailable.
 
-The program reads standard Linux `power_supply` attributes from a battery it discovers by checking each device's `type` attribute:
+## How the program works
+
+Linux provides battery data through `/sys/class/power_supply/`.
+The program reads the `type` attribute to find a battery.
+The current version requires exactly one battery.
+
+The program uses these standard attributes when they are available:
 
 ```text
-/sys/class/power_supply/<battery>/capacity
-/sys/class/power_supply/<battery>/status
-/sys/class/power_supply/<battery>/charge_control_start_threshold
-/sys/class/power_supply/<battery>/charge_control_end_threshold
-/sys/class/power_supply/<battery>/energy_full
-/sys/class/power_supply/<battery>/energy_full_design
-/sys/class/power_supply/<battery>/charge_full
-/sys/class/power_supply/<battery>/charge_full_design
-/sys/class/power_supply/<battery>/cycle_count
+capacity
+status
+charge_control_start_threshold
+charge_control_end_threshold
+energy_full
+energy_full_design
+charge_full
+charge_full_design
+cycle_count
 ```
 
-MSI performance-mode commands use:
+For MSI performance modes, the program uses:
 
 ```text
 /sys/devices/platform/msi-ec/shift_mode
 ```
 
-The program checks write results and reads an attribute again to compare the reported value with the requested setting. **Read-back verifies what the driver reports, not necessarily the physical charging or thermal behavior.**
+The program writes text to a sysfs attribute.
+It then reads the attribute to check the reported value.
+This check does not prove that the hardware applied the setting.
 
-The current implementation requires exactly one discoverable battery. If multiple batteries are found, it returns an error instead of selecting one arbitrarily.
+## Source files
 
-## Source layout
+| File | Function |
+| --- | --- |
+| `main.c` | Read and check command-line arguments. |
+| `battery.c` | Find the battery and run battery operations. |
+| `battery.h` | Declare the public battery functions. |
+| `sysfs.c` | Read and write sysfs attributes. |
+| `sysfs.h` | Declare the sysfs functions and result codes. |
+| `Makefile` | Build and install the program. |
 
-```text
-.
-├── main.c       # CLI argument handling
-├── battery.c    # Battery discovery, status, health, and control
-├── battery.h    # Public battery operations
-├── sysfs.c      # sysfs file reads and writes
-├── sysfs.h      # Shared I/O results and declarations
-├── Makefile
-├── README.md
-└── build/        # Generated object files and executable (ignored by Git)
-    ├── obj/
-    └── bin/
-```
+Make puts object files in `build/obj/`.
+It puts the executable in `build/bin/`.
+Git ignores the `build/` directory.
+
+## Tested configuration
+
+The initial tests used this laptop:
+
+- Model: MSI Thin A15 B7VE.
+- Operating system: Arch Linux.
+- Kernel during initial tests: 7.2.11-arch1-1.
+- EC firmware: `16RKIMS1.112`.
+- Community `msi-ec` driver with a manual configuration override for `16RKIMS1.111`.
+
+This override does not make the firmware officially supported.
+Do not use the override on another laptop without a separate compatibility check.
+The program has not been validated on all MSI models.
 
 ## Troubleshooting
 
-**`Unavailable` appears for thresholds or performance mode:** The loaded driver may not export those attributes. Check what is present:
+**A value shows `Unavailable`.**
 
-```bash
+Check that the driver provides the required sysfs attribute.
+
+```sh
 ls /sys/class/power_supply/
 ls /sys/devices/platform/msi-ec/ 2>/dev/null
 ```
 
-**Write fails with `Permission denied`:** sysfs controls commonly require elevated privileges. Confirm the device/driver is compatible before retrying with `sudo`.
+**A write fails with `Permission denied`.**
 
-**Write fails despite root permissions:** The driver may not support the attribute or selected value. Check kernel logs and the driver's documentation; do not attempt raw EC register writes as a workaround.
+Check that the driver supports the operation.
+Then use an authorized account to run the command.
 
-**Battery health data is missing:** A driver may export `charge_*` but not `energy_*`, or vice versa. Some batteries do not expose `cycle_count`.
+**The program does not find a battery.**
 
-## Current limitations and planned improvements
+Check the `type` files in `/sys/class/power_supply/`.
+The program stops if it finds more than one battery.
 
-- Only one battery is supported at a time.
-- Allowed charge limits are currently fixed at 60%, 80%, and 100%.
-- MSI performance modes are validated against a fixed list, not a dynamically queried capability list.
-- No automatic service, scheduled policy, or background daemon is provided.
-- Automated tests and broader hardware validation are future work.
+**The health command does not show a cycle count.**
 
-## Safety and compatibility
+The battery driver might not provide the cycle count.
+Do not estimate a cycle count from the health percentage.
 
-This project is under development and was initially built around an MSI laptop running Linux. **It is not a guarantee of compatibility with every MSI device or other vendors.** Verify kernel/driver support and observe the actual behavior before relying on charging or performance controls.
+## Limits
 
-Do not use an unsupported EC firmware override simply to make sysfs attributes appear. Follow the upstream driver's guidance, and keep a way to revert driver changes.
+- The program supports one battery at a time.
+- The program accepts only 60%, 80%, and 100% charge end limits.
+- The program does not read a list of supported limits from the driver.
+- The program does not run at startup.
+- The project does not yet have automated tests.
 
-## Contributing
+## Contribute
 
-Bug reports and patches are welcome. Include the operating system, kernel version, laptop model, driver version, and the exact command/output where useful. Do **not** post passwords, authentication tokens, private identifiers, or raw firmware data without reviewing them first.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request.
+Report the model, kernel version, driver version, and the command that failed.
+Do not include private data in public issue reports.
 
 ## License
 
-A license has not yet been selected. Add a `LICENSE` file before inviting code reuse or contributions under an open-source license.
+This project uses the MIT License. See [LICENSE](LICENSE).

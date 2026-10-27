@@ -7,8 +7,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#ifndef POWER_SUPPLY_DIR
 #define POWER_SUPPLY_DIR "/sys/class/power_supply"
+#endif
 #define SHIFT_MODE_PATH "/sys/devices/platform/msi-ec/shift_mode"
 
 #define BATTERY_NAME_SIZE 256
@@ -342,7 +343,7 @@ int print_battery_health(void)
 
     printf("  %-20s %.1f%%\n", "Health", health);
 
-    if (cycle_result == IO_OK && cycles > 0)
+    if (cycle_result == IO_OK)
         printf("  %-20s %lu\n", "Cycle count", cycles);
     else
         printf("  %-20s Unavailable\n", "Cycle count");

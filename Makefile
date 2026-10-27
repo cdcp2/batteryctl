@@ -36,3 +36,16 @@ install: $(TARGET)
 
 uninstall:
 	rm -f $(PREFIX)/bin/batteryctl
+
+TEST_CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -g -O0 -fsanitize=address,undefined
+
+.PHONY: test clean-tests
+
+tests/test_sysfs: tests/test_sysfs.c sysfs.c sysfs.h
+	$(CC) $(TEST_CFLAGS) -I. tests/test_sysfs.c sysfs.c -o $@
+
+test: tests/test_sysfs
+	./tests/test_sysfs
+
+clean-tests:
+	rm -f tests/test_sysfs

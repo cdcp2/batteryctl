@@ -74,7 +74,6 @@ enum IoResult write_sysfs_value(const char *path, const char *value)
         ret = IO_ERROR;
     }
 
-    /* fclose tambien puede detectar errores de escritura diferidos. */
     if (fclose(file) == EOF) {
         perror("fclose");
         ret = IO_ERROR;

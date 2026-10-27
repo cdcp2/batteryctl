@@ -8,7 +8,7 @@ BINDIR = build/bin
 
 TARGET = $(BINDIR)/batteryctl
 
-SRCS = main.c battery.c sysfs.c
+SRCS = main.c battery.c sysfs.c fan.c output.c
 OBJS = $(patsubst %.c,$(OBJDIR)/%.o,$(SRCS))
 DEPS = $(OBJS:.o=.d)
 

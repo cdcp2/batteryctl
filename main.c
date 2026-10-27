@@ -1,4 +1,5 @@
 #include "battery.h"
+#include "fan.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,7 +13,12 @@ static void print_usage(const char *program)
             "  %s status\n"
             "  %s health\n"
             "  %s limit <60|80|100>\n"
-            "  %s performance <comfort|eco|turbo>\n",
+            "  %s performance <comfort|eco|turbo>\n"
+            "  %s fan status\n"
+            "  %s fan list\n"
+            "  %s fan <auto|silent|advanced>\n"
+            "  %s fan boost <on|off>\n",
+            program, program, program, program,
             program, program, program, program);
 }
 
@@ -66,7 +72,21 @@ int main(int argc, char *argv[])
 
             return set_charge_limit(limit);
         }
+
+        if (strcmp(argv[1], "fan") == 0){
+            if (strcmp(argv[2], "status") == 0)
+                return print_fan_status();
+            if (strcmp(argv[2], "list") == 0)
+                return print_available_fan_modes();
+            if (strcmp(argv[2], "auto") == 0 ||
+                strcmp(argv[2], "silent") == 0 ||
+                strcmp(argv[2], "advanced") == 0)
+                return set_fan_mode(argv[2]);
+        }
     }
+
+    if (argc == 4 && strcmp(argv[1], "fan") == 0 && strcmp(argv[2], "boost") == 0)
+        return set_cooler_boost(argv[3]);
 
     print_usage(argv[0]);
     return EXIT_FAILURE;

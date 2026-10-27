@@ -1,5 +1,6 @@
 #include "battery.h"
 #include "sysfs.h"
+#include "output.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -102,26 +103,6 @@ static enum IoResult make_battery_path(const char *battery,
     return IO_OK;
 }
 
-static int print_sysfs_attribute(const char *label, const char *path,
-                                 const char *suffix, int optional)
-{
-    char value[64];
-    enum IoResult result = read_sysfs_value(path, value, sizeof(value));
-
-    if (result == IO_UNAVAILABLE && optional) {
-        printf("  %-20s Unavailable\n", label);
-        return EXIT_SUCCESS;
-    }
-    if (result != IO_OK) {
-        if (result == IO_UNAVAILABLE)
-            fprintf(stderr, "Required attribute unavailable: %s\n", path);
-        return EXIT_FAILURE;
-    }
-
-    printf("  %-20s %s%s\n", label, value, suffix);
-    return EXIT_SUCCESS;
-}
-
 static int print_battery_attribute(const char *battery, const char *label,
                                    const char *attribute, const char *suffix,
                                    int optional)
@@ -130,11 +111,6 @@ static int print_battery_attribute(const char *battery, const char *label,
     if (make_battery_path(battery, attribute, path, sizeof(path)) != IO_OK)
         return EXIT_FAILURE;
     return print_sysfs_attribute(label, path, suffix, optional);
-}
-
-static void print_section(const char *title)
-{
-    printf("\n%s\n------------------------------\n", title);
 }
 
 int print_battery_status(void)
